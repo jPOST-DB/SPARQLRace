@@ -182,6 +182,10 @@ rescue JSON::ParserError => e
   nil
 end
 
+def compact_query(query)
+  query.gsub(/\s+/, ' ').strip
+end
+
 def handle_race(env)
   req        = Rack::Request.new(env)
   method     = req.request_method.downcase.to_sym
@@ -196,7 +200,7 @@ def handle_race(env)
     return JSON.generate({ error: 'Missing query parameter' })
   end
 
-  RACE_LOGGER.info("[#{request_id}] SPARQL query:\n#{sparql_query}")
+  RACE_LOGGER.info("[#{request_id}] SPARQL query: #{compact_query(sparql_query)}")
 
   # バックエンドには常にPOST + application/sparql-query で送る
   forward_headers = {
