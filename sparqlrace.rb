@@ -166,14 +166,15 @@ def extract_sparql_query(req, method)
   when :post
     content_type = req.env['CONTENT_TYPE'].to_s
 
-    if content_type.include?('application/json')
+    if content_type.include?('application/sparql-query')
+      req.body.read  # ボディがそのままSPARQLクエリ
+    elsif content_type.include?('application/json')
       body = req.body.read
       return nil if body.nil? || body.empty?
       JSON.parse(body)['query']
     elsif content_type.include?('application/x-www-form-urlencoded')
-      req.params['query']  # Rackが自動でパースしてくれる
+      req.params['query']
     else
-      # fallback: とりあえずparamsから探す
       req.params['query']
     end
   end
