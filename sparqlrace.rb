@@ -91,6 +91,7 @@ class RacingProxy
 
     req_headers.each { |k, v| req[k] = v }
     req['X-Request-Id'] = request_id if request_id
+    req['Host'] = "#{uri.host}:#{uri.port}"  # バックエンドのHostに上書き
 
     req.body = body if body && method.to_sym == :post
     req
@@ -183,8 +184,8 @@ rescue JSON::ParserError => e
   nil
 end
 
-def compact_query(query)
-  query.gsub(/\s+/, ' ').strip
+def url_encode_query(query)
+  URI.encode_www_form_component(query)
 end
 
 def handle_race(env)
@@ -201,7 +202,7 @@ def handle_race(env)
     return JSON.generate({ error: 'Missing query parameter' })
   end
 
-  RACE_LOGGER.info("[#{request_id}] SPARQL query: #{compact_query(sparql_query)}")
+  RACE_LOGGER.info("[#{request_id}] SPARQL query: #{url_encode_query(sparql_query)}")
 
   # バックエンドには常にPOST + application/sparql-query で送る
   forward_headers = {
