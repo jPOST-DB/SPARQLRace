@@ -97,6 +97,10 @@ class RacingProxy
     req
   end
 
+  def success?(result)
+    result && result.error.nil? && result.status.between?(200, 299)
+  end
+
   def wait_for_winner(futures, request_id)
     deadline = Time.now + @timeout
 
@@ -104,12 +108,16 @@ class RacingProxy
       futures.each do |f|
         if f.complete?
           result = f.value
-          return result if result && result.error.nil?
+          return result if success?(result)
         end
       end
 
       if futures.all?(&:complete?)
-        return futures.map(&:value).min_by { |r| r&.elapsed_sec || Float::INFINITY }
+        results = futures.map(&:value).compact
+        successful = results.select { |r| success?(r) }
+        return successful.min_by(&:elapsed_sec) if successful.any?
+
+        return results.min_by { |r| [r.status || 999, r.elapsed_sec] }
       end
 
       raise 'Race timeout' if Time.now > deadline
