@@ -16,9 +16,10 @@ ENDPOINTS = {
 
 TIMEOUT_SEC = ENV.fetch('TIMEOUT_SEC', '5').to_f
 
-HOP_BY_HOP = %w[
-  connection keep-alive transfer-encoding te trailers
-  upgrade proxy-authorization proxy-authenticate
+ALLOWED_RESPONSE_HEADERS = %w[
+  content-type
+  cache-control
+  vary
 ].freeze
 
 # ============================================================
@@ -233,7 +234,7 @@ def handle_race(env)
   end
 
   result.headers.each do |k, v|
-    next if HOP_BY_HOP.include?(k.downcase)
+    next if ALLOWED_RESPONSE_HEADERS.include?(k.downcase)
     response.headers[k] = Array(v).join(', ')
   end
 
