@@ -234,7 +234,7 @@ def handle_race(env)
   end
 
   result.headers.each do |k, v|
-    next if ALLOWED_RESPONSE_HEADERS.include?(k.downcase)
+    next unless ALLOWED_RESPONSE_HEADERS.include?(k.downcase)
     response.headers[k] = Array(v).join(', ')
   end
 
