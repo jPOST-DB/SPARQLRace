@@ -216,7 +216,7 @@ def handle_race(env)
   # バックエンドには常にPOST + application/sparql-query で送る
   forward_headers = {
     'Content-Type' => 'application/sparql-query',
-    'Accept'       => req.env['HTTP_ACCEPT'] || 'application/json'
+    'Accept' => 'application/sparql-results+json, application/json;q=0.9'
   }
 
   result = PROXY.race(
