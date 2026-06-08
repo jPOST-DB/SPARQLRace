@@ -214,9 +214,13 @@ def handle_race(env)
   RACE_LOGGER.info("[#{request_id}] SPARQL query: #{url_encode_query(sparql_query)}")
 
   # バックエンドには常にPOST + application/sparql-query で送る
+  # キャッシュ（途中のHTTPキャッシュやリバースプロキシ）を使わせない。
+  # キャッシュ済みの302が返るとレース比較ができなくなるため。
   forward_headers = {
     'Content-Type' => 'application/sparql-query',
-    'Accept' => 'application/sparql-results+json, application/json;q=0.9'
+    'Accept' => 'application/sparql-results+json, application/json;q=0.9',
+    'Cache-Control' => 'no-cache, no-store, max-age=0',
+    'Pragma' => 'no-cache'
   }
 
   result = PROXY.race(
@@ -235,8 +239,14 @@ def handle_race(env)
 
   result.headers.each do |k, v|
     next unless ALLOWED_RESPONSE_HEADERS.include?(k.downcase)
+    # キャッシュ系はバックエンドの値を透過せず、後段で no-store に上書きする
+    next if k.downcase == 'cache-control'
     response.headers[k] = Array(v).join(', ')
   end
+
+  # クライアント/OSにプロキシ応答をキャッシュさせない（毎回レースさせる）
+  response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+  response.headers['Pragma']        = 'no-cache'
 
   response.headers['X-Winner-Endpoint'] = result.name.to_s
   response.headers['X-Race-Elapsed']    = format('%.3f', result.elapsed_sec)
