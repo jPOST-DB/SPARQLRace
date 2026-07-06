@@ -35,7 +35,7 @@ end
 # レーシングプロキシ本体
 # ============================================================
 class RacingProxy
-  Result = Struct.new(:name, :status, :headers, :body, :elapsed_sec, :error)
+  Result = Struct.new(:name, :status, :headers, :body, :elapsed_sec, :error, :app_error)
 
   def initialize(endpoints, timeout: TIMEOUT_SEC, logger: RACE_LOGGER)
     @endpoints = endpoints
@@ -77,13 +77,27 @@ class RacingProxy
     res = http.request(req)
 
     elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start
-    @log.info("[#{request_id}] endpoint=#{name} url=#{uri} status=#{res.code} elapsed=#{format('%.3f', elapsed)}s")
+    app_error = app_error?(res.body, res['content-type'])
+    @log.info("[#{request_id}] endpoint=#{name} url=#{uri} status=#{res.code} app_error=#{app_error} elapsed=#{format('%.3f', elapsed)}s")
 
-    Result.new(name, res.code.to_i, res.to_hash, res.body, elapsed, nil)
+    Result.new(name, res.code.to_i, res.to_hash, res.body, elapsed, nil, app_error)
   rescue => e
     elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start rescue 0
     @log.warn("[#{request_id}] endpoint=#{name} ERROR #{e.class}: #{e.message} elapsed=#{format('%.3f', elapsed)}s")
-    Result.new(name, nil, {}, nil, elapsed, e)
+    Result.new(name, nil, {}, nil, elapsed, e, false)
+  end
+
+  # QLever は HTTP 200 でも、クエリ失敗時に JSON ボディで
+  # {"status": "ERROR", ...} を返すことがある。これをアプリケーション
+  # レベルの失敗とみなし、レースの「成功」から除外する。
+  def app_error?(body, content_type)
+    return false if body.nil? || body.empty?
+    return false unless content_type.to_s.include?('json')
+    return false unless body.include?('"status"')  # パース前の軽量チェック
+    parsed = JSON.parse(body)
+    parsed.is_a?(Hash) && parsed['status'] == 'ERROR'
+  rescue JSON::ParserError
+    false
   end
 
   def build_request(method, uri, body, req_headers, request_id)
@@ -99,7 +113,7 @@ class RacingProxy
   end
 
   def success?(result)
-    result && result.error.nil? && result.status.between?(200, 299)
+    result && result.error.nil? && result.status.between?(200, 299) && !result.app_error
   end
 
   def wait_for_winner(futures, request_id)
@@ -118,7 +132,9 @@ class RacingProxy
         successful = results.select { |r| success?(r) }
         return successful.min_by(&:elapsed_sec) if successful.any?
 
-        return results.min_by { |r| [r.status || 999, r.elapsed_sec] }
+        # 全滅時: app_error(HTTP 200 だが中身が ERROR)は後回しにして、
+        # 実エラーを優先的に返す
+        return results.min_by { |r| [r.app_error ? 1 : 0, r.status || 999, r.elapsed_sec] }
       end
 
       raise 'Race timeout' if Time.now > deadline
